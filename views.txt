@@ -1,0 +1,175 @@
+from django.shortcuts import render,redirect
+from django.http import HttpResponse
+from django.core.files.storage import FileSystemStorage
+from django.utils.datastructures import MultiValueDictKeyError
+from bigmartapp.models import categorydb,productsdb
+from vegsapp.models import contactdb,signupdb,cartdb,orderdb
+from django.db.models.aggregates import Sum
+from django.views.decorators.csrf import csrf_exempt
+
+
+# Create your views here.
+def vegindex(request):
+    data=categorydb.objects.all()
+    da=productsdb.objects.all()
+    return render(request,'vegindex.html',{'data': data,'da':da})
+
+def about(request):
+    return render(request,'about.html')
+
+def products(request,cat):
+    #da=productsdb.objects.all()
+    print(cat)
+    if(cat=="all"):
+        da=productsdb.objects.all()
+    else:
+        da=productsdb.objects.filter(ProductCategory=cat)
+    return render(request,'products.html',{'da':da})
+
+def contact(request):
+    return render(request,'contact.html')
+
+def contactdata(request):
+    if request.method == "POST":
+        name_r=request.POST.get('name')
+        email_r=request.POST.get('email')
+        subject_r=request.POST.get('subject')
+        message_r=request.POST.get('message')
+        
+        obj = contactdb(Name=name_r,Email=email_r,Subject=subject_r,Message=message_r)
+        obj.save()
+        return redirect('contact')
+
+def singleproduct(request,dataid):
+    data=productsdb.objects.filter(id=dataid)
+    return render(request, 'singleproduct.html', {'data': data})
+
+def login(request):
+    return render(request,'login.html',)
+
+def logindata(request):
+    #uname_r=request.POST.get("uname")
+    #password_r=request.POST.get("password")
+    if request.method == 'POST':
+        uname_r=request.POST.get("uname")
+        password_r=request.POST.get("password")
+        if signupdb.objects.filter(UserName=uname_r,Password=password_r).exists():
+            data=signupdb.objects.filter(UserName=uname_r,Password=password_r).values('Name','Email','Mobile','id').first()
+            request.session['username']=uname_r
+            request.session['password']=password_r
+            request.session['email']=data['Email']
+            request.session['mobile']=data['Mobile']
+            request.session['id']=data['id']
+            return redirect("vegindex")
+        else:
+            return render(request,'login.html',{'msg' : "Sorry!!! Invalid Usename or Password"})
+
+def logout(request):
+    del request.session['username']
+    del request.session['password']
+    del request.session['email']
+    del request.session['mobile']
+    del request.session['id']
+    return redirect("vegindex")
+
+
+def signup(request):
+    return render(request,'signup.html')
+
+def signupdata(request):
+    if request.method == "POST":
+        name_r=request.POST.get('name')
+        email_r=request.POST.get('email')
+        mobile_r=request.POST.get('mobile')
+        uname_r=request.POST.get('uname')
+        password_r=request.POST.get('password')
+        
+        obj = signupdb(Name=name_r,Email=email_r,Mobile=mobile_r,UserName=uname_r,Password=password_r)
+        obj.save()
+        return redirect('login')
+
+#def cart(request):
+ #   return render(request,'cart.html')
+
+def cart(request,prodid):
+    if 'id' in request.session.keys():
+        if cartdb.objects.filter(ProductId=prodid,Status=0,Userid=request.session.get('id')).exists():
+            quantity=request.POST.get('quantity')
+            total=request.POST.get('total')
+            userid=request.POST.get('userid')
+            cartdb.objects.filter(ProductId=prodid,Status=0).update(Total=total,Quantity=quantity)
+            return redirect('cart1')
+        else:
+            quantity=request.POST.get('quantity')
+            total=request.POST.get('total')
+            userid=request.POST.get('userid')
+            print("*****************")
+            print(userid)
+            #obj=cartdb(ProductId=productsdb.objects.get(id=prodid),Total=total,Quantity=quantity,Userid=signupdb.objects.get(id=userid),Status=0)
+            obj=cartdb(ProductId=productsdb.objects.get(id=prodid),Total=total,Quantity=quantity,Userid=signupdb.objects.get(id=userid),Status=0)
+           
+            obj.save()
+            return redirect('cart1')
+    else:
+        return redirect('vegindex')
+
+def cart1(request):
+    #data=cartdb.objects.all()
+    co=request.session.get('id')
+    data=cartdb.objects.filter(Userid=co,Status=0)
+    subtotal=cartdb.objects.filter(Userid=co,Status=0).aggregate(Sum('Total'))
+    s=subtotal['Total__sum']
+    return render(request,'cart.html',{'data':data, 's':s})
+
+@csrf_exempt
+def cartupdate(request):
+    if request.method == 'POST':
+        cartid=request.POST.get('pid')
+        q=request.POST.get('quantity')
+        p=request.POST.get('price')
+        T=int(q)*int(p)
+        cartdb.objects.filter(id=cartid).update(Quantity=q,Total=T)
+        return HttpResponse() 
+
+def removecart(request,dataid):
+    if request.method == "POST":
+        price=request.POST.get('price')
+        quantity=request.POST.get('quantity')
+        total=request.POST.get('total')
+        cartdb.objects.filter(id=dataid).delete()
+        return redirect('cart1')
+
+def checkout(request):
+    co=request.session.get('id')
+    data=cartdb.objects.filter(Userid=co,Status=0)
+    subtotal=cartdb.objects.filter(Userid=co,Status=0).aggregate(Sum('Total'))
+    s=subtotal['Total__sum']
+    return render(request,'checkout.html',{'data':data, 's':s})
+
+def orderdata(request):
+    if request.method == "POST":
+        fname_r=request.POST.get('fname')
+        lname_r=request.POST.get('lname')
+        district_r=request.POST.get('district')
+        street_r=request.POST.get('street')
+        appartment_r=request.POST.get('appartment')
+        city_r=request.POST.get('city')
+        pin_r=request.POST.get('pin')
+        phone_r=request.POST.get('phone')
+        email_r=request.POST.get('email')
+        userid=request.session.get('id')
+        print(userid)
+        data=cartdb.objects.filter(Userid=userid,Status=0)
+        print(data)
+        for a in data:
+            obj=orderdb(Cartid=cartdb.objects.get(id=a.id),Firstname=fname_r,Lastname=lname_r,District=district_r,StreetAddress=street_r,Appartment=appartment_r,City=city_r,Pin=pin_r,Phone=phone_r,Email=email_r)
+            obj.save()
+            cartdb.objects.filter(id=a.id).update(Status=1)
+        return redirect('vegindex')
+
+       
+    
+        
+
+
+
